@@ -1,0 +1,28 @@
+# ---- Thresholds (%) ----
+CPU_THRESHOLD=80
+MEM_THRESHOLD=85
+DISK_THRESHOLD=90
+
+# ---- Services to monitor (space-separated) ----
+# Ubuntu/Debian: ssh   RHEL/Rocky: sshd
+SERVICES="ssh cron"
+
+# ---- Backups ----
+BACKUP_SOURCES="/etc /home"
+BACKUP_DEST="/var/backups/toolkit"
+BACKUP_RETENTION_DAYS=7
+
+# ---- Log compression ----
+COMPRESS_LOG_DIRS="/var/log/myapp"
+LOG_COMPRESS_AFTER_DAYS=3
+LOG_DELETE_AFTER_DAYS=30
+
+# ---- Temp cleanup ----
+TMP_DIRS="/tmp /var/tmp"
+TMP_MAX_AGE_DAYS=7
+
+# ---- Alerts ----
+ALERT_ENABLED=false
+ALERT_COOLDOWN=1800          # seconds before the same alert can fire again
+SLACK_WEBHOOK_URL=""
+ALERT_EMAIL=""               # needs a working `mail` command
