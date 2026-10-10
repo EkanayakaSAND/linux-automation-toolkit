@@ -18,6 +18,11 @@ if (( ${#services[@]} == 0 )); then read -ra services <<< "$SERVICES"; fi
 
 status=0
 for svc in "${services[@]}"; do
+  # A missing unit is a config problem, not an outage; don't alert or fail the run
+  if [[ -z "$(systemctl list-unit-files "${svc}.service" --no-legend 2>/dev/null || true)" ]]; then
+    warn "$svc: not installed on this system — check SERVICES in config"
+    continue
+  fi
   if systemctl is-active --quiet "$svc"; then
     info "$svc: active"
     continue

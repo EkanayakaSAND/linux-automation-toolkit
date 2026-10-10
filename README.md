@@ -25,6 +25,31 @@ CPU > 80%  →  cpu_check.sh  →  logs/toolkit.log  →  Slack / email alert
 
 ---
 
+## Screenshots
+
+**Full health check run**
+![Health check](docs/screenshots/health-check.png)
+
+**CPU threshold alert**
+![CPU alert](docs/screenshots/cpu-alert.png)
+
+**Failed service detected and restarted**
+![Service restart](docs/screenshots/service-restart.png)
+
+**Backup with checksum and owner-only permissions**
+![Backup](docs/screenshots/backup.png)
+
+**Cron jobs installed by setup.sh**
+![Cron](docs/screenshots/cron.png)
+
+**Timestamped entries in toolkit.log**
+![Toolkit log](docs/screenshots/toolkit-log.png)
+
+**Alert delivered to Slack**
+![Slack alert](docs/screenshots/slack-alert.png)
+
+---
+
 ## Repository Structure
 
 ```
@@ -223,8 +248,8 @@ fallocate -l 5G /tmp/bigfile && ./scripts/disk_check.sh; rm /tmp/bigfile
 sudo systemctl stop cron
 sudo ./scripts/service_check.sh -r cron
 
-# Safe cleanup preview
-./scripts/cleanup_tmp.sh -n
+# Safe cleanup preview (sudo so root-owned temp files are included)
+sudo ./scripts/cleanup_tmp.sh -n
 
 # Watch everything happen
 tail -f logs/toolkit.log
@@ -247,7 +272,7 @@ shellcheck -x scripts/*.sh scripts/lib/*.sh setup.sh
 - **Explicit `PATH`.** Cron runs with a minimal environment. Setting `PATH` avoids the classic "works manually, fails in cron" bug.
 - **Alert cooldown.** Monitoring that spams gets muted. One alert per issue per window keeps alerts meaningful.
 - **Backup verification.** Every archive gets a `.sha256` checksum, and `tar` exit code 1 (files changed while being read) is a warning, not a failure.
-- **Safety guards.** Cleanup refuses `/`, stays on one filesystem (`-xdev`), handles filenames with spaces (`-print0`) and supports dry runs.
+- **Safety guards.** Cleanup refuses `/`, stays on one filesystem (`-xdev`), handles filenames with spaces (`-print0`) and supports dry runs. `backup.sh` refuses `/` (and forms like `//` or `/./`) as a source.
 
 ---
 
@@ -256,6 +281,7 @@ shellcheck -x scripts/*.sh scripts/lib/*.sh setup.sh
 - `config/toolkit.conf` is **gitignored** and created with `chmod 600`, because it can contain webhook URLs and other secrets. Only the `.example` file is committed.
 - `create_user.sh` validates usernames, group names and shells, rejects private keys or invalid public keys passed to `-k`, prints temporary passwords **once to the terminal and never to the log file**, and forces a password change on first login with `chage -d 0`.
 - When an SSH key is provided, password login is locked and `.ssh` / `authorized_keys` get strict permissions (`700` / `600`).
+- `backup.sh` runs with `umask 077` and sets the destination directory to `700`, because archives contain credential files such as `/etc/shadow`. Archives and their `.sha256` files are readable by root only.
 - Only scripts that need root call `require_root`. Monitoring checks run as a normal user.
 
 ---
@@ -263,6 +289,7 @@ shellcheck -x scripts/*.sh scripts/lib/*.sh setup.sh
 ## Limitations
 
 - `log_compress.sh` is a learning exercise. On production systems, **`logrotate`** is the standard tool: it signals applications to reopen log files, which plain `gzip` does not.
+- Modern distros already clean `/tmp` with **`systemd-tmpfiles`**, so `cleanup_tmp.sh` is most useful for custom temp directories. `systemd-private-*` directories (used by services with `PrivateTmp=`) are skipped on purpose.
 - Alerts use simple string-built JSON; messages with unusual characters may need proper escaping (e.g. with `jq`).
 - The toolkit monitors a single host. It is not a replacement for Prometheus, Zabbix or similar systems.
 

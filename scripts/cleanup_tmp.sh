@@ -19,7 +19,9 @@ for dir in "${dirs[@]}"; do
   if [[ -z "$dir" || "$dir" == "/" ]]; then error "Refusing to clean '$dir'"; continue; fi
   [[ -d "$dir" ]] || { warn "Skipping missing directory: $dir"; continue; }
 
-  mapfile -d '' files < <(find "$dir" -mindepth 1 -xdev -type f -mtime +"$age" -print0)
+  # systemd-private-* dirs belong to systemd (PrivateTmp=) and must never be touched
+  mapfile -d '' files < <(find "$dir" -mindepth 1 -xdev -name 'systemd-private-*' -prune \
+                            -o -type f -mtime +"$age" -print0 2>/dev/null)
   info "$dir: ${#files[@]} file(s) older than ${age} days"
   (( ${#files[@]} )) || continue
 
@@ -27,7 +29,10 @@ for dir in "${dirs[@]}"; do
     printf '  [dry-run] %s\n' "${files[@]}"
   else
     rm -f -- "${files[@]}"
-    find "$dir" -mindepth 1 -xdev -type d -empty -mtime +"$age" -delete
+    # Same prune as above; a failed rmdir (e.g. dir no longer empty) must not abort the run
+    find "$dir" -mindepth 1 -xdev -name 'systemd-private-*' -prune \
+      -o -type d -empty -mtime +"$age" -print0 2>/dev/null \
+      | xargs -0 -r rmdir -- 2>/dev/null || true
     info "$dir: cleaned"
   fi
 done
