@@ -14,6 +14,11 @@ shift $(( OPTIND - 1 ))
 
 dirs=("$@")
 if (( ${#dirs[@]} == 0 )); then read -ra dirs <<< "$TMP_DIRS"; fi
+# An empty list would do nothing and exit 0 — a misconfiguration must not look like success
+if (( ${#dirs[@]} == 0 )); then
+  warn "No temp directories configured — set TMP_DIRS in config/toolkit.conf"
+  exit 1
+fi
 
 for dir in "${dirs[@]}"; do
   if [[ -z "$dir" || "$dir" == "/" ]]; then error "Refusing to clean '$dir'"; continue; fi

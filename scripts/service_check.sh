@@ -15,6 +15,11 @@ services=("$@")
 # SERVICES is set in toolkit.conf, not a typo of $services
 # shellcheck disable=SC2153
 if (( ${#services[@]} == 0 )); then read -ra services <<< "$SERVICES"; fi
+# An empty list would run zero checks and exit 0 — a misconfiguration must not look like success
+if (( ${#services[@]} == 0 )); then
+  warn "No services configured — set SERVICES in config/toolkit.conf"
+  exit 1
+fi
 
 status=0
 for svc in "${services[@]}"; do

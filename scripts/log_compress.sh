@@ -11,6 +11,11 @@ shift $(( OPTIND - 1 ))
 
 dirs=("$@")
 if (( ${#dirs[@]} == 0 )); then read -ra dirs <<< "$COMPRESS_LOG_DIRS"; fi
+# An empty list would do nothing and exit 0 — a misconfiguration must not look like success
+if (( ${#dirs[@]} == 0 )); then
+  warn "No log directories configured — set COMPRESS_LOG_DIRS in config/toolkit.conf"
+  exit 1
+fi
 
 for dir in "${dirs[@]}"; do
   [[ -d "$dir" ]] || { warn "Skipping missing directory: $dir"; continue; }

@@ -17,6 +17,11 @@ shift $(( OPTIND - 1 ))
 
 sources=("$@")
 if (( ${#sources[@]} == 0 )); then read -ra sources <<< "$BACKUP_SOURCES"; fi
+# An empty list would only surface as a misleading tar "Backup FAILED" alert; report the real cause
+if (( ${#sources[@]} == 0 )); then
+  warn "No backup sources configured — set BACKUP_SOURCES in config/toolkit.conf"
+  exit 1
+fi
 
 # tar runs with -C /, so every source must be an absolute path
 for src in "${sources[@]}"; do
