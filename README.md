@@ -6,7 +6,7 @@ A collection of Bash scripts that automate routine Linux server administration: 
 
 Checking disk space, restarting a dead service and cleaning up old logs by hand is slow, easy to forget and impossible to do consistently across servers. This toolkit turns those checks into repeatable, logged, scheduled jobs.
 
-```
+```text
 CPU > 80%  →  cpu_check.sh  →  logs/toolkit.log  →  Slack / email alert
 ```
 
@@ -16,44 +16,56 @@ CPU > 80%  →  cpu_check.sh  →  logs/toolkit.log  →  Slack / email alert
 
 - **Health monitoring:** CPU, memory, disk, load average, processes and systemd services
 - **Threshold alerts:** Slack webhook and/or email, with a cooldown so cron doesn't flood you
-- **Automated backups:** compressed `tar` archives with SHA-256 checksums and retention cleanup
+- **Automated backups:** compressed `tar` archives with SHA-256 checksums, root-only permissions and retention cleanup
 - **Log management:** compress old logs, delete very old archives
 - **Temp cleanup:** age-based cleanup with a dry-run mode and safety guards
 - **User provisioning:** validated usernames, SSH key setup, forced password change on first login
 - **One config file:** every threshold and path lives in `config/toolkit.conf`
+- **Fails loudly:** empty or invalid config values produce an error, never a silent "all OK"
 - **Consistent design:** shared logging library, `-h` help on every script, predictable exit codes
 
 ---
 
 ## Screenshots
 
-**Full health check run**
-![Health check](docs/screenshots/health-check.png)
+**One command runs every check and ends with a single summary. A service listed in the config but not installed (`ssh` here) is flagged as a config warning, not a failure**
+![health_check.sh output with each check's results](docs/screenshots/health-check.png)
 
-**CPU threshold alert**
-![CPU alert](docs/screenshots/cpu-alert.png)
+**CPU alert fires when usage (100%) crosses the 80% threshold, listing the `stress` processes responsible**
+![cpu_check.sh raising an ALERT with the top CPU consumers](docs/screenshots/cpu-alert.png)
 
-**Failed service detected and restarted**
-![Service restart](docs/screenshots/service-restart.png)
+**A stopped service is detected as DOWN and restarted automatically with `-r`**
+![systemctl stop cron followed by service_check.sh -r restarting it](docs/screenshots/service-restart.png)
 
-**Backup with checksum and owner-only permissions**
-![Backup](docs/screenshots/backup.png)
+**Dry run (`-n`) reports stale files per directory without deleting anything**
+![cleanup_tmp.sh -n output for /tmp and /var/tmp](docs/screenshots/cleanup-dry-run.png)
 
-**Cron jobs installed by setup.sh**
-![Cron](docs/screenshots/cron.png)
+**Backups contain `/etc/shadow`, so the destination is root-only (`700`) and archives are created with `umask 077`. Normal users get Permission denied**
+![Backup directory and archive permissions](docs/screenshots/backup.png)
 
-**Timestamped entries in toolkit.log**
-![Toolkit log](docs/screenshots/toolkit-log.png)
+<!-- TODO: cron.png -->
 
-**Alert delivered to Slack**
-![Slack alert](docs/screenshots/slack-alert.png)
+**Every event (checks, alerts, restarts, cleanup, backups) is logged with a timestamp, level and script name**
+![tail of logs/toolkit.log](docs/screenshots/toolkit-log.png)
+
+<!-- TODO: slack-alert.png -->
+
+<!-- TODO: github-actions.png -->
 
 ---
 
 ## Repository Structure
 
-```
+```text
 linux-automation-toolkit/
+├── .github/
+│   └── workflows/
+│       └── shellcheck.yml   # Lints every script on push and pull request
+├── config/
+│   └── toolkit.conf.example # Copied to toolkit.conf by setup.sh
+├── docs/
+│   └── screenshots/         # Images used in this README
+├── logs/                    # Runtime logs (gitignored)
 ├── scripts/
 │   ├── lib/common.sh        # Shared logging, config loading, alerting
 │   ├── health_check.sh      # Runs all monitoring checks, one summary
@@ -67,9 +79,8 @@ linux-automation-toolkit/
 │   ├── log_compress.sh
 │   ├── cleanup_tmp.sh
 │   └── create_user.sh
-├── config/
-│   └── toolkit.conf.example # Copied to toolkit.conf by setup.sh
-├── logs/                    # Runtime logs (gitignored)
+├── .gitattributes           # Forces LF line endings
+├── .gitignore               # Excludes logs/ and the real config
 ├── setup.sh                 # Permissions, config, cron installation
 └── README.md
 ```
@@ -83,6 +94,8 @@ linux-automation-toolkit/
 - Standard tools: `coreutils`, `procps`, `tar`, `gzip`, `openssl`, `openssh-client` (`ssh-keygen`, for `create_user.sh -k`)
 - Optional: `curl` (Slack alerts), `mail` / `mailutils` (email alerts), `stress` (testing)
 - Root privileges for `backup.sh`, `create_user.sh`, `service_check.sh -r` and cleaning system directories
+
+Tested on Linux Mint 22.3 (VM).
 
 ---
 
@@ -158,31 +171,12 @@ Every script supports `-h` for usage help.
 
 | Script | What it solves | Usage |
 | --- | --- | --- |
-| `backup.sh` | Timestamped, verified backups with automatic retention | `sudo backup.sh [-d /dest] [/path ...]` |
+| `backup.sh` | Timestamped, verified, root-only backups with automatic retention | `sudo backup.sh [-d /dest] [/path ...]` |
 | `log_compress.sh` | Keeps log directories from eating the disk | `log_compress.sh [-n] [/dir ...]` |
 | `cleanup_tmp.sh` | Removes stale temp files safely | `cleanup_tmp.sh [-n] [-a 7] [/dir ...]` |
 | `create_user.sh` | Consistent, secure user onboarding | `sudo create_user.sh -u alice [-g devs] [-k alice.pub]` |
 
 `-n` runs in **dry-run** mode: it shows what would happen without changing anything. Always try a dry run first.
-
-### Example output
-
-```
-$ ./scripts/health_check.sh
-===== uptime_check =====
-[2026-10-08 10:30:01] [INFO] [uptime_check] Uptime: up 3 days, 4 hours (since 2026-10-05 06:12:44)
-[2026-10-08 10:30:01] [INFO] [uptime_check] Load average: 0.42 0.38 0.35 (CPU cores: 2)
-===== cpu_check =====
-[2026-10-08 10:30:02] [INFO] [cpu_check] CPU usage: 7% (threshold 80%)
-===== mem_check =====
-[2026-10-08 10:30:02] [INFO] [mem_check] Memory usage: 41% (2310 MiB available of 3915 MiB)
-===== disk_check =====
-[2026-10-08 10:30:02] [INFO] [disk_check] Disk /: 63% used
-===== service_check =====
-[2026-10-08 10:30:02] [INFO] [service_check] ssh: active
-[2026-10-08 10:30:02] [INFO] [service_check] cron: active
-[2026-10-08 10:30:02] [INFO] [health_check] Health check finished: all OK
-```
 
 ---
 
@@ -191,7 +185,7 @@ $ ./scripts/health_check.sh
 | Code | Meaning |
 | --- | --- |
 | `0` | Everything OK |
-| `1` | Usage or configuration error |
+| `1` | Usage or configuration error (including empty lists or invalid values in the config) |
 | `2` | A check failed or a threshold was crossed |
 
 These codes let `health_check.sh` aggregate results and let other tools (cron wrappers, CI, monitoring agents) react to failures.
@@ -223,13 +217,13 @@ Each line is tagged `# linux-automation-toolkit`, so re-running setup replaces t
    SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
 ```
 
-3. Trigger a test alert:
+1. Trigger a test alert:
 
 ```bash
    ./scripts/cpu_check.sh -t 1
 ```
 
-Each alert type has its own cooldown key (`cpu`, `disk_/`, `svc_nginx`, …). A disk that stays full therefore sends one alert per cooldown window, not one every 5 minutes.
+Each alert type has its own cooldown key (`cpu`, `disk_/`, `svc_nginx`, …). A disk that stays full therefore sends one alert per cooldown window, not one every 5 minutes. To force an alert again during testing, delete its stamp file, e.g. `rm -f logs/.alert_cpu`.
 
 ---
 
@@ -251,6 +245,11 @@ sudo ./scripts/service_check.sh -r cron
 # Safe cleanup preview (sudo so root-owned temp files are included)
 sudo ./scripts/cleanup_tmp.sh -n
 
+# Backup permissions
+sudo ./scripts/backup.sh
+ls /var/backups/toolkit            # normal user: Permission denied
+sudo ls -l /var/backups/toolkit    # -rw------- archive + .sha256
+
 # Watch everything happen
 tail -f logs/toolkit.log
 ```
@@ -267,21 +266,23 @@ shellcheck -x scripts/*.sh scripts/lib/*.sh setup.sh
 
 - **Shared library (`lib/common.sh`).** Logging, config loading and alerting are written once. Every script behaves the same way and a fix applies everywhere.
 - **`set -euo pipefail`.** Scripts stop on errors, undefined variables and failed pipes instead of silently continuing with bad state.
+- **Fail loudly on bad config.** An empty `SERVICES` or `TMP_DIRS` list, or a non-numeric threshold, exits with an error. A misconfiguration must never look like a healthy server.
 - **CPU from `/proc/stat`.** Two samples one second apart give real utilisation; parsing `top` output is fragile and varies between versions.
 - **Memory from `MemAvailable`.** Linux uses free RAM for page cache, so `MemFree` makes healthy servers look full. `MemAvailable` reflects what applications can actually use.
 - **Explicit `PATH`.** Cron runs with a minimal environment. Setting `PATH` avoids the classic "works manually, fails in cron" bug.
 - **Alert cooldown.** Monitoring that spams gets muted. One alert per issue per window keeps alerts meaningful.
+- **"Not installed" is not "down".** A configured service that doesn't exist on the host is reported as a config warning, so a typo or a missing package doesn't trigger a false outage alert.
 - **Backup verification.** Every archive gets a `.sha256` checksum, and `tar` exit code 1 (files changed while being read) is a warning, not a failure.
-- **Safety guards.** Cleanup refuses `/`, stays on one filesystem (`-xdev`), handles filenames with spaces (`-print0`) and supports dry runs. `backup.sh` refuses `/` (and forms like `//` or `/./`) as a source.
+- **Safety guards.** Cleanup refuses `/`, stays on one filesystem (`-xdev`), skips `systemd-private-*` directories, handles filenames with spaces (`-print0`) and supports dry runs. `backup.sh` refuses `/` (and forms like `//` or `/./`) as a source.
 
 ---
 
 ## Security Considerations
 
 - `config/toolkit.conf` is **gitignored** and created with `chmod 600`, because it can contain webhook URLs and other secrets. Only the `.example` file is committed.
+- `backup.sh` runs with `umask 077` and sets the destination directory to `700`, because archives contain credential files such as `/etc/shadow`. Archives and their `.sha256` files are readable by root only.
 - `create_user.sh` validates usernames, group names and shells, rejects private keys or invalid public keys passed to `-k`, prints temporary passwords **once to the terminal and never to the log file**, and forces a password change on first login with `chage -d 0`.
 - When an SSH key is provided, password login is locked and `.ssh` / `authorized_keys` get strict permissions (`700` / `600`).
-- `backup.sh` runs with `umask 077` and sets the destination directory to `700`, because archives contain credential files such as `/etc/shadow`. Archives and their `.sha256` files are readable by root only.
 - Only scripts that need root call `require_root`. Monitoring checks run as a normal user.
 
 ---
@@ -290,6 +291,7 @@ shellcheck -x scripts/*.sh scripts/lib/*.sh setup.sh
 
 - `log_compress.sh` is a learning exercise. On production systems, **`logrotate`** is the standard tool: it signals applications to reopen log files, which plain `gzip` does not.
 - Modern distros already clean `/tmp` with **`systemd-tmpfiles`**, so `cleanup_tmp.sh` is most useful for custom temp directories. `systemd-private-*` directories (used by services with `PrivateTmp=`) are skipped on purpose.
+- Cron jobs run as root, so `logs/` and the alert cooldown files become root-owned. Run `sudo chown -R "$USER":"$USER" logs/` before manual runs as a normal user.
 - Alerts use simple string-built JSON; messages with unusual characters may need proper escaping (e.g. with `jq`).
 - The toolkit monitors a single host. It is not a replacement for Prometheus, Zabbix or similar systems.
 
@@ -302,12 +304,6 @@ shellcheck -x scripts/*.sh scripts/lib/*.sh setup.sh
 - [ ] Telegram / Discord alert support
 - [ ] `logrotate` config for the toolkit's own log
 - [ ] Off-server backup upload (e.g. AWS S3)
-
----
-
-## What I Learned
-
-Building this project gave me hands-on practice with Linux processes and `/proc`, filesystems and mount points, users, groups and permissions, systemd service management, Bash scripting (argument parsing with `getopts`, arrays, process substitution, error handling), environment variables, cron scheduling, and troubleshooting scripts that behave differently under cron.
 
 ---
 
